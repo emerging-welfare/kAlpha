@@ -9,6 +9,10 @@ from glob import glob
 
 all_result = []
 
+global disaagrements_df
+
+disaagrements_df = pd.DataFrame(columns=["tag","annot1","annot2","sentence"])
+
 def sorted_nicely(l):
     # Copied from this post
     # https://stackoverflow.com/questions/2669059/how-to-sort-alpha-numeric-set-in-python
@@ -168,7 +172,61 @@ def all_docs(kalpha_list,tags):
             result[tag]['kalpha'] = result[tag]['kalpha'] / result[tag]['count']
     return result
 
-def calculate_Kalpha(in_df, annots, args):
+def getid(a,ind,sentence_lengths,sentence_ids):
+
+    for i,sent_len in enumerate(sentence_lengths):
+        if a[0] <= sent_len:
+            #print(a[0]+ind)
+            s = sentence_ids[i]
+            if i == 0:
+                id = s + ".w." + str(a[0] + ind)
+            else:
+                id = s + ".w." + str(a[0] + ind - sentence_lengths[i-1])
+            #print(id)
+            return id,s
+
+def addwords(a,b,tag,filename,sentence_lengths,args):
+
+    global disaagrements_df
+    doc = folia.Document(file=args.document[0]+filename)
+
+    sentence_ids = []
+    for paragraph in doc.paragraphs():
+        for sentence in paragraph.sentences():
+            sentence_ids.append(sentence.id)
+
+    annot1 = ""
+    annot2 = ""
+
+    filename = re.sub(r"\.folia\.xml$", r"", filename)
+
+    if a[2] != args.empty:
+        for ind in range(0,a[1]-a[0]+1):
+            asd,sentence2 = getid(a,ind,sentence_lengths,sentence_ids)
+            #print(asd + "    annot1")
+            if annot1 == "":
+                annot1 = doc[asd].text()
+            else:
+                annot1 = annot1 + " " + doc[asd].text()
+
+    if b[2] != args.empty:
+        for ind in range(0,b[1]-b[0]+1):
+            asd,sentence2 = getid(b,ind,sentence_lengths,sentence_ids)
+            #print(asd + "    annot2")
+            if annot2 == "":
+                annot2 = doc[asd].text()
+            else:
+                annot2 = annot2 + " " + doc[asd].text()
+    #print(annot1)
+    #print(annot2)
+    #print(sentence2)
+    sentence2 = doc[sentence2]
+    #print("hey")
+    disaagrements_df = disaagrements_df.append({"tag":tag,"annot1":annot1,"annot2":annot2,"sentence":sentence2},ignore_index=True)
+
+    return
+
+def calculate_Kalpha(in_df, annots, args, sentence_lengths, filename):
     pairs = list(itertools.combinations(annots, 2))
     observed_nom = 0
     observed_denom = 0
@@ -178,11 +236,14 @@ def calculate_Kalpha(in_df, annots, args):
     if in_df.empty:
         return {"kalpha":0.0,"weight":observed_denom}
 
+
     for pair in pairs:
         entities1 = in_df[in_df.annotator == pair[0]].entities.tolist()[0]
         entities2 = in_df[in_df.annotator == pair[1]].entities.tolist()[0]
+        print("Entities1 : " + str(entities1))
+        print("Entities2 : " + str(entities2))
         if entities1 == entities2:
-            print(entities1)
+            #print(entities1), 291, 'empty'], [292,
             for g in entities1:
                 if g[2] != args.empty:
                     observed_denom += 1
@@ -197,13 +258,21 @@ def calculate_Kalpha(in_df, annots, args):
                         observed_nom += getUnion(g, h) - intersect * (1 - getMetric(g, h))
                         observed_denom += 1
 
+                        if getMetric(g,h) == 0:
+                            tag2 = g[2]
+                            addwords(g,h,tag2,filename,sentence_lengths,args)
+
                     elif g[2] != args.empty and h[2] == args.empty and encapsulates(h, g):
                         observed_nom += 2 * getLength(g)
                         observed_denom += 1
+                        tag2 = g[2]
+                        addwords(g,h,tag2,filename,sentence_lengths,args)
 
                     elif g[2] == args.empty and h[2] != args.empty and encapsulates(g, h):
                         observed_nom += 2 * getLength(h)
                         observed_denom += 1
+                        tag2 = h[2]
+                        addwords(g,h,tag2,filename,sentence_lengths,args)
 
                     elif g[2] == args.empty and h[2] == args.empty:
                         empty_count += intersect
@@ -237,7 +306,13 @@ def calculate_Kalpha(in_df, annots, args):
     return {"kalpha":kalpha,"weight":observed_denom}
 
 
-def getResult(all_df, annots, args, doc_length):
+def getResult(all_df, annots, args, doc_length, sentence_lengths, filename):
+
+    for i,sent_len in enumerate(sentence_lengths):
+        if i != 0:
+            sentence_lengths[i] = sentence_lengths[i-1] + sent_len
+
+    #print(sentence_lengths)
 
     if not args.overlap:
         entities_df = pd.DataFrame()
@@ -248,7 +323,7 @@ def getResult(all_df, annots, args, doc_length):
             entities_df = entities_df.append(
                 {"annotator": annot, "entities": entities}, ignore_index=True)
 
-        return calculate_Kalpha(entities_df, annots, args)
+        return calculate_Kalpha(entities_df, annots, args, sentence_lengths, filename)
 
     else:
         tags = all_df.tag.unique()
@@ -263,7 +338,7 @@ def getResult(all_df, annots, args, doc_length):
                 entities_df = entities_df.append(
                     {"annotator": annot, "entities": entities}, ignore_index=True)
 
-            kAlpha_tags[tag] = calculate_Kalpha(entities_df, annots, args)
+            kAlpha_tags[tag] = calculate_Kalpha(entities_df, annots, args, sentence_lengths, filename)
 
         return kAlpha_tags
 
@@ -313,6 +388,9 @@ def main():
 
             doc_length = sum(sentence_lengths)
 
+            if len(all_df.index) == 0:
+                continue
+
             if args.set:
                 all_df = all_df[all_df.focus == args.set]
 
@@ -320,7 +398,7 @@ def main():
             asd_tags = all_df.tag.unique()
             all_tags.extend(asd_tags)
 
-            result = getResult(all_df, annotators, args, doc_length)
+            result = getResult(all_df, annotators, args, doc_length, sentence_lengths, filename)
             all_result.append(result)
 
     else:
@@ -349,3 +427,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+    writer = pd.ExcelWriter('disaagrements.xlsx')
+    disaagrements_df.to_excel(writer)
+    writer.save()
