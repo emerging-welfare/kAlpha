@@ -170,7 +170,18 @@ def all_docs(kalpha_list,tags):
     for tag in result.keys():
         if result[tag]['count'] != 0:
             result[tag]['kalpha'] = result[tag]['kalpha'] / result[tag]['count']
-    return result
+
+    print(result)
+
+    all_count = 0
+    all_kAlpha = 0.0
+    for tag in result.keys():
+        all_kAlpha += result[tag]['count']*result[tag]['kalpha']
+        all_count += result[tag]['count']
+
+    print("Overall score is : " + str(all_kAlpha/all_count))
+
+    return
 
 def getid(a,ind,sentence_lengths,sentence_ids):
 
@@ -233,9 +244,10 @@ def calculate_Kalpha(in_df, annots, args, sentence_lengths, filename):
     expected_nom = 0
     expected_denom = 0
     empty_count = 0
+    weight = 0
     if in_df.empty:
-        return {"kalpha":0.0,"weight":observed_denom}
-
+#        return {"kalpha":0.0,"weight":observed_denom}
+        return {"kalpha":0.0,"weight":weight}
 
     for pair in pairs:
         entities1 = in_df[in_df.annotator == pair[0]].entities.tolist()[0]
@@ -247,6 +259,7 @@ def calculate_Kalpha(in_df, annots, args, sentence_lengths, filename):
             for g in entities1:
                 if g[2] != args.empty:
                     observed_denom += 1
+                    weight += 2 * getLength(g)
 
             continue
 
@@ -255,10 +268,12 @@ def calculate_Kalpha(in_df, annots, args, sentence_lengths, filename):
                 intersect = getIntersect(g, h)
                 if intersect > 0:
                     if g[2] != args.empty and h[2] != args.empty:
-                        observed_nom += getUnion(g, h) - intersect * (1 - getMetric(g, h))
+                        a = getUnion(g, h) - intersect * (1 - getMetric(g, h))
+                        observed_nom += a
                         observed_denom += 1
+                        weight += getLength(g) + getLength(h)
 
-                        if getMetric(g,h) == 0:
+                        if getMetric(g,h) == 0 and a != 0:
                             tag2 = g[2]
                             addwords(g,h,tag2,filename,sentence_lengths,args)
 
@@ -266,19 +281,22 @@ def calculate_Kalpha(in_df, annots, args, sentence_lengths, filename):
                         observed_nom += 2 * getLength(g)
                         observed_denom += 1
                         tag2 = g[2]
+                        weight += getLength(g)
                         addwords(g,h,tag2,filename,sentence_lengths,args)
 
                     elif g[2] == args.empty and h[2] != args.empty and encapsulates(g, h):
                         observed_nom += 2 * getLength(h)
                         observed_denom += 1
                         tag2 = h[2]
+                        weight += getLength(h)
                         addwords(g,h,tag2,filename,sentence_lengths,args)
 
                     elif g[2] == args.empty and h[2] == args.empty:
                         empty_count += intersect
 
     if observed_nom == 0:
-        return {"kalpha":1.0,"weight":observed_denom}
+#        return {"kalpha":1.0,"weight":observed_denom}
+        return {"kalpha":1.0,"weight":weight}
 
     observed = float(observed_nom / observed_denom)
     entities = [i for x in in_df.entities.tolist()
@@ -300,11 +318,12 @@ def calculate_Kalpha(in_df, annots, args, sentence_lengths, filename):
         expected = float(expected_nom / expected_denom)
 
     if expected == 0:
-        return {"kalpha":0.0,"weight":observed_denom}
+#        return {"kalpha":0.0,"weight":observed_denom}
+        return {"kalpha":0.0,"weight":weight}
 
     kalpha = 1.0 - observed / expected
-    return {"kalpha":kalpha,"weight":observed_denom}
-
+#    return {"kalpha":kalpha,"weight":observed_denom}
+    return {"kalpha":kalpha,"weight":weight}
 
 def getResult(all_df, annots, args, doc_length, sentence_lengths, filename):
 
@@ -363,12 +382,15 @@ def main():
 
         all_tags = []
         files = glob(args.document[0] + "http*")
+        all_count_event = 0
+        all_sentence_agreement = 0
         for filename in files:
 
             filename = re.sub(r"^.*\/([^\/]*)$", r"\g<1>", filename)
             print(filename)
             sentence_lengths = []
             all_df = pd.DataFrame()
+            event_sentences_df = pd.DataFrame(columns=["sentence","annot"])
             # All docs' sentences should be same length.
             for i, docfile in enumerate(args.document):
                 docfile = docfile + filename
@@ -384,6 +406,7 @@ def main():
                         for entity in layer.select(folia.Entity):
                             if entity.cls == "etype":
                                 eventtype_list.append(re.sub(r"(.*)\.w\.\d$", r"\g<1>", entity.wrefs()[0].id))
+                                event_sentences_df = event_sentences_df.append({"sentence":re.sub(r"(.*)\.w\.\d$", r"\g<1>", entity.wrefs()[0].id),"annot":"annot" + str(i + 1)},ignore_index=True)
 
                 start_point = 0
                 for h, sentence in enumerate(doc.sentences()):
@@ -398,6 +421,7 @@ def main():
                     start_point = start_point + sentence_lengths[h]
 
                 print(str(notincount))
+
             doc_length = sum(sentence_lengths)
 
             if len(all_df.index) == 0:
@@ -412,6 +436,30 @@ def main():
 
             result = getResult(all_df, annotators, args, doc_length, sentence_lengths, filename)
             all_result.append(result)
+
+            if len(event_sentences_df) == 0 or "-Event" not in args.set:
+                continue
+
+            tp = 0
+            tobedropped = []
+            for i,row in event_sentences_df.iterrows():
+                if row["annot"] == "annot2":
+                    continue
+                asd = event_sentences_df.loc[(event_sentences_df.annot == "annot2") & (event_sentences_df.sentence == row["sentence"])]
+                if len(asd) >= 1:
+                    print(asd.index.tolist()[0])
+                    tobedropped.append(asd.index.tolist()[0])
+                    tobedropped.append(i)
+                    tp += 1
+
+            event_sentences_df = event_sentences_df.drop(event_sentences_df.index[[a for a in tobedropped]])
+
+            sentence_agreement = (2*tp)/(2*tp + len(event_sentences_df[event_sentences_df.annot == "annot1"]) + len(event_sentences_df[event_sentences_df.annot == "annot2"]))
+            all_sentence_agreement += sentence_agreement * (len(event_sentences_df) + len(tobedropped))
+            all_count_event += len(event_sentences_df) + len(tobedropped)
+
+        if "-Event" in args.set:
+            print("Sentence agreement is : " + str(all_sentence_agreement/all_count_event))
 
     else:
         if len(args.document) != 1:
@@ -435,7 +483,7 @@ def main():
             lambda x: [str(x[0]) + ":" + str(x[1]), str(x[2])], axis=1)
         annotators = all_df.annotator.unique()
     # We are finished with getting data. Both folia's and csv's data layout is same
-    print(all_docs(all_result, all_tags))
+    all_docs(all_result, all_tags)
 
 if __name__ == "__main__":
     main()

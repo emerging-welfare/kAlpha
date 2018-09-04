@@ -170,7 +170,18 @@ def all_docs(kalpha_list,tags):
     for tag in result.keys():
         if result[tag]['count'] != 0:
             result[tag]['kalpha'] = result[tag]['kalpha'] / result[tag]['count']
-    return result
+
+    print(result)
+
+    all_count = 0
+    all_kAlpha = 0.0
+    for tag in result.keys():
+        all_kAlpha += result[tag]['count']*result[tag]['kalpha']
+        all_count += result[tag]['count']
+
+    print("Overall score is : " + str(all_kAlpha/all_count))
+
+    return
 
 def getid(a,ind,sentence_lengths,sentence_ids):
 
@@ -233,8 +244,11 @@ def calculate_Kalpha(in_df, annots, args, sentence_lengths, filename):
     expected_nom = 0
     expected_denom = 0
     empty_count = 0
+    #weighted docs by their word counts in entities
+    weight = 0
     if in_df.empty:
-        return {"kalpha":0.0,"weight":observed_denom}
+#        return {"kalpha":0.0,"weight":observed_denom}
+        return {"kalpha":0.0,"weight":weight}
 
 
     for pair in pairs:
@@ -247,6 +261,7 @@ def calculate_Kalpha(in_df, annots, args, sentence_lengths, filename):
             for g in entities1:
                 if g[2] != args.empty:
                     observed_denom += 1
+                    weight += 2 * getLength(g)
 
             continue
 
@@ -255,10 +270,12 @@ def calculate_Kalpha(in_df, annots, args, sentence_lengths, filename):
                 intersect = getIntersect(g, h)
                 if intersect > 0:
                     if g[2] != args.empty and h[2] != args.empty:
-                        observed_nom += getUnion(g, h) - intersect * (1 - getMetric(g, h))
+                        a = getUnion(g, h) - intersect * (1 - getMetric(g, h))
+                        observed_nom += a
                         observed_denom += 1
+                        weight += getLength(g) + getLength(h)
 
-                        if getMetric(g,h) == 0:
+                        if getMetric(g,h) == 0 and a != 0:
                             tag2 = g[2]
                             addwords(g,h,tag2,filename,sentence_lengths,args)
 
@@ -266,19 +283,22 @@ def calculate_Kalpha(in_df, annots, args, sentence_lengths, filename):
                         observed_nom += 2 * getLength(g)
                         observed_denom += 1
                         tag2 = g[2]
+                        weight += getLength(g)
                         addwords(g,h,tag2,filename,sentence_lengths,args)
 
                     elif g[2] == args.empty and h[2] != args.empty and encapsulates(g, h):
                         observed_nom += 2 * getLength(h)
                         observed_denom += 1
                         tag2 = h[2]
+                        weight += getLength(h)
                         addwords(g,h,tag2,filename,sentence_lengths,args)
 
                     elif g[2] == args.empty and h[2] == args.empty:
                         empty_count += intersect
 
     if observed_nom == 0:
-        return {"kalpha":1.0,"weight":observed_denom}
+#        return {"kalpha":1.0,"weight":observed_denom}
+        return {"kalpha":1.0,"weight":weight}
 
     observed = float(observed_nom / observed_denom)
     entities = [i for x in in_df.entities.tolist()
@@ -300,10 +320,12 @@ def calculate_Kalpha(in_df, annots, args, sentence_lengths, filename):
         expected = float(expected_nom / expected_denom)
 
     if expected == 0:
-        return {"kalpha":0.0,"weight":observed_denom}
+#        return {"kalpha":0.0,"weight":observed_denom}
+        return {"kalpha":0.0,"weight":weight}
 
     kalpha = 1.0 - observed / expected
-    return {"kalpha":kalpha,"weight":observed_denom}
+#    return {"kalpha":kalpha,"weight":observed_denom}
+    return {"kalpha":kalpha,"weight":weight}
 
 
 def getResult(all_df, annots, args, doc_length, sentence_lengths, filename):
