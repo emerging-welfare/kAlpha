@@ -119,7 +119,7 @@ def organize_data(entities, doc_length, args):
             out_list.append([start_point, ESP - 1, args.empty])
 
         elif ESP < start_point:
-            print("Duplicates or Overlapping Tags")
+#            print("Duplicates or Overlapping Tags")
             continue
 
         out_list.append([ESP, EEP, entity[1]])
@@ -171,7 +171,7 @@ def all_docs(kalpha_list,tags):
         if result[tag]['count'] != 0:
             result[tag]['kalpha'] = result[tag]['kalpha'] / result[tag]['count']
 
-    print(result)
+    print("3. Döküman bazında agreementlar : " + str(result))
 
     all_count = 0
     all_kAlpha = 0.0
@@ -254,8 +254,8 @@ def calculate_Kalpha(in_df, annots, args, sentence_lengths, filename):
     for pair in pairs:
         entities1 = in_df[in_df.annotator == pair[0]].entities.tolist()[0]
         entities2 = in_df[in_df.annotator == pair[1]].entities.tolist()[0]
-        print("Entities1 : " + str(entities1))
-        print("Entities2 : " + str(entities2))
+#        print("Entities1 : " + str(entities1))
+#        print("Entities2 : " + str(entities2))
         if entities1 == entities2:
             #print(entities1), 291, 'empty'], [292,
             for g in entities1:
@@ -388,13 +388,17 @@ def main():
         for filename in files:
 
             filename = re.sub(r"^.*\/([^\/]*)$", r"\g<1>", filename)
-            print(filename)
+#            print(filename)
             sentence_lengths = []
             all_df = pd.DataFrame()
             # All docs' sentences should be same length.
             for i, docfile in enumerate(args.document):
                 docfile = docfile + filename
-                doc = folia.Document(file=docfile)
+                try:
+                    doc = folia.Document(file=docfile)
+                except:
+                    print("Couldn't open : " + filename)
+                    break
                 if i == 0:
                     for j, sentence in enumerate(doc.sentences()):
                         sentence_lengths.append(len(sentence))
@@ -445,10 +449,12 @@ def main():
             lambda x: [str(x[0]) + ":" + str(x[1]), str(x[2])], axis=1)
         annotators = all_df.annotator.unique()
     # We are finished with getting data. Both folia's and csv's data layout is same
-    print(all_docs(all_result, all_tags))
+    all_docs(all_result, all_tags)
+
+    asd = re.sub(r"^.*-(\w+)\.foliaset.xml", r"\g<1>", args.set)
+    writer = pd.ExcelWriter(re.sub(r"^.*\/(\w)\w*\/$", r"\g<1>", args.document[0]) + re.sub(r"^.*\/(\w)\w*\/$", r"\g<1>", args.document[1]) + "_" + asd + '.xlsx')
+    disaagrements_df.to_excel(writer)
+    writer.save()
 
 if __name__ == "__main__":
     main()
-    writer = pd.ExcelWriter('disaagrements.xlsx')
-    disaagrements_df.to_excel(writer)
-    writer.save()

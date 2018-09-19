@@ -1,0 +1,10 @@
+#length=100
+#length variable must always be in the first line
+#Layout of csv is : Annotator,Start index, End index, Category (Tag)
+#Note that Start and End index are inclusive. For example for John,5,8,cat1 included units are 5,6,7 and 8.
+John,9,15,cat6
+John,29,35,cat6
+John,36,50,cat6
+Ali,9,15,cat6
+Ali,18,24,cat6
+Ali,44,50,cat6

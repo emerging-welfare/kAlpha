@@ -119,7 +119,7 @@ def organize_data(entities, doc_length, args):
             out_list.append([start_point, ESP - 1, args.empty])
 
         elif ESP < start_point:
-            print("Duplicates or Overlapping Tags")
+#            print("Duplicates or Overlapping Tags")
             continue
 
         out_list.append([ESP, EEP, entity[1]])
@@ -171,7 +171,7 @@ def all_docs(kalpha_list,tags):
         if result[tag]['count'] != 0:
             result[tag]['kalpha'] = result[tag]['kalpha'] / result[tag]['count']
 
-    print(result)
+    print("2. Cümle bazında agreementlar : " + str(result))
 
     all_count = 0
     all_kAlpha = 0.0
@@ -252,8 +252,8 @@ def calculate_Kalpha(in_df, annots, args, sentence_lengths, filename):
     for pair in pairs:
         entities1 = in_df[in_df.annotator == pair[0]].entities.tolist()[0]
         entities2 = in_df[in_df.annotator == pair[1]].entities.tolist()[0]
-        print("Entities1 : " + str(entities1))
-        print("Entities2 : " + str(entities2))
+#        print("Entities1 : " + str(entities1))
+#        print("Entities2 : " + str(entities2))
         if entities1 == entities2:
             #print(entities1), 291, 'empty'], [292,
             for g in entities1:
@@ -361,7 +361,6 @@ def getResult(all_df, annots, args, doc_length, sentence_lengths, filename):
 
         return kAlpha_tags
 
-
 def main():
     parser = argparse.ArgumentParser(description="This is a script for calculating Krippendorff's Alpha between two or more annotators. You can find the latest paper on the metric in this link : http://web.asc.upenn.edu/usr/krippendorff/m-Replacement%20of%20section%2012.4%20on%20unitizing%20continua%20in%20CA,%203rd%20ed.pdf (Please give document(s) first, then pass options.)", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-e', '--empty', type=str, help="If you have a category named empty pass this argument with a string.",
@@ -378,6 +377,7 @@ def main():
                         help="CSV File For the csv file's format see https://github.com/OsmanMutlu/kAlpha/example.csv (You can choose multiple Folia docs too.)")
     args = parser.parse_args()
 
+    print("\n" + re.sub(r"^.*-(\w+)\.foliaset.xml", r"\g<1>", args.set) + " :")
     if args.Folia:
 
         all_tags = []
@@ -387,14 +387,18 @@ def main():
         for filename in files:
 
             filename = re.sub(r"^.*\/([^\/]*)$", r"\g<1>", filename)
-            print(filename)
+#            print(filename)
             sentence_lengths = []
             all_df = pd.DataFrame()
             event_sentences_df = pd.DataFrame(columns=["sentence","annot"])
             # All docs' sentences should be same length.
             for i, docfile in enumerate(args.document):
                 docfile = docfile + filename
-                doc = folia.Document(file=docfile)
+                try:
+                    doc = folia.Document(file=docfile)
+                except:
+                    print("Couldn't read : " + filename)
+                    break
                 if i == 0:
                     for j, sentence in enumerate(doc.sentences()):
                         sentence_lengths.append(len(sentence))
@@ -405,22 +409,24 @@ def main():
                     for layer in sentence.select(folia.EntitiesLayer):
                         for entity in layer.select(folia.Entity):
                             if entity.cls == "etype":
-                                eventtype_list.append(re.sub(r"(.*)\.w\.\d$", r"\g<1>", entity.wrefs()[0].id))
-                                event_sentences_df = event_sentences_df.append({"sentence":re.sub(r"(.*)\.w\.\d$", r"\g<1>", entity.wrefs()[0].id),"annot":"annot" + str(i + 1)},ignore_index=True)
+                                eventtype_list.append(re.sub(r"(.*)\.w\.\d+$", r"\g<1>", entity.wrefs()[0].id))
+                                event_sentences_df = event_sentences_df.append({"sentence":re.sub(r"(.*)\.w\.\d+$", r"\g<1>", entity.wrefs()[0].id),"annot":"annot" + str(i + 1)},ignore_index=True)
 
+#                print(eventtype_list)
                 start_point = 0
                 for h, sentence in enumerate(doc.sentences()):
                     for layer in sentence.select(folia.EntitiesLayer):
                         for entity in layer.select(folia.Entity):
-                            if re.sub(r"(.*)\.w\.\d$", r"\g<1>", entity.wrefs()[0].id) in eventtype_list:
+#                            print(entity.wrefs()[0].id + "    " + entity.cls)
+                            if re.sub(r"(.*)\.w\.\d+$", r"\g<1>", entity.wrefs()[0].id) in eventtype_list:
                                 all_df = getData(entity, "annot" + str(i + 1), start_point, sentence_lengths[h], all_df)
                             else:
-                                print("Not in the same sentence with etype")
+#                                print("Not in the same sentence with etype")
                                 notincount += 1
 
                     start_point = start_point + sentence_lengths[h]
 
-                print(str(notincount))
+#                print(str(notincount))
 
             doc_length = sum(sentence_lengths)
 
@@ -447,7 +453,7 @@ def main():
                     continue
                 asd = event_sentences_df.loc[(event_sentences_df.annot == "annot2") & (event_sentences_df.sentence == row["sentence"])]
                 if len(asd) >= 1:
-                    print(asd.index.tolist()[0])
+#                    print(asd.index.tolist()[0])
                     tobedropped.append(asd.index.tolist()[0])
                     tobedropped.append(i)
                     tp += 1
@@ -459,7 +465,7 @@ def main():
             all_count_event += len(event_sentences_df) + len(tobedropped)
 
         if "-Event" in args.set:
-            print("Sentence agreement is : " + str(all_sentence_agreement/all_count_event))
+            print("1.Sentence agreement : " + str(all_sentence_agreement/all_count_event))
 
     else:
         if len(args.document) != 1:
@@ -485,8 +491,11 @@ def main():
     # We are finished with getting data. Both folia's and csv's data layout is same
     all_docs(all_result, all_tags)
 
+    asd = re.sub(r"^.*-(\w+)\.foliaset.xml", r"\g<1>", args.set)
+    writer = pd.ExcelWriter(re.sub(r"^.*\/(\w)\w*\/$", r"\g<1>", args.document[0]) + re.sub(r"^.*\/(\w)\w*\/$", r"\g<1>", args.document[1]) + "_" + asd + '.xlsx')
+#    disaagrements_df.to_excel(writer)
+#    writer.save()
+
+
 if __name__ == "__main__":
     main()
-    writer = pd.ExcelWriter('disaagrements.xlsx')
-    disaagrements_df.to_excel(writer)
-    writer.save()

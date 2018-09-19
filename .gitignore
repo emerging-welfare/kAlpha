@@ -1,1 +1,3 @@
-disagreements.xlsx
+*.xlsx
+*~
+.gitignore
